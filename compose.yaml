@@ -5,6 +5,8 @@ services:
       target: development
     ports:
       - ${FE_PORT}:3000
+    environment:
+      BE_SERVICE_NAME: backend
     stdin_open: true
     volumes:
       - ./frontend:${VOLUME_BASE_PATH}

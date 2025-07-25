@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Create image based on the official Node image from dockerhub
-FROM node:18-alpine AS development
+FROM node:22.17-alpine AS development
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -23,7 +23,7 @@ COPY . /usr/src/app
 EXPOSE 3000
 
 # Serve the app
-CMD ["npm", "start"]
+CMD ["npm", "run", "dev"]
 
 FROM development as dev-envs
 RUN <<EOF
@@ -38,4 +38,4 @@ usermod -aG docker vscode
 EOF
 # install Docker tools (cli, buildx, compose)
 COPY --from=gloursdocker/docker / /
-CMD [ "npm", "start" ]
+CMD ["npm", "run", "dev"]

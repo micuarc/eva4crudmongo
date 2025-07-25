@@ -1,43 +1,33 @@
 {
-  "name": "my-app",
+  "name": "frontend",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
-  "dependencies": {
-    "axios": "^0.24.0",
-    "bootstrap": "^5.1.3",
-    "sass": "^1.43.4",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2"
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
-  "optionalDependencies": {
-    "fsevents": "^2.1.2"
+  "dependencies": {
+    "bootstrap": "^5.3.7",
+    "react": "^19.1.0",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^5.15.0",
-    "@testing-library/react": "^12.1.4",
-    "@testing-library/user-event": "^7.2.1",
-    "react-scripts": "^5.0.0"
-  },
-  "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "@eslint/js": "^9.30.1",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^9.30.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "vite": "^7.0.4"
   },
   "eslintConfig": {
     "extends": "react-app"
   },
-  "proxy": "http://backend:3000",
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  }
+  "proxy": "http://backend:3000"
 }
