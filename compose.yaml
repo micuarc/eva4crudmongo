@@ -1,0 +1,72 @@
+services:
+  frontend:
+    build:
+      context: frontend
+      target: development
+    ports:
+      - ${FE_PORT}:3000
+    stdin_open: true
+    volumes:
+      - ./frontend:${VOLUME_BASE_PATH}
+      - ${VOLUME_BASE_PATH}node_modules
+    restart: always
+    networks:
+      - react-express
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: backend
+      target: development
+    ports:
+      - ${BE_PORT}:3000
+    volumes:
+      - ./backend:${VOLUME_BASE_PATH}
+      - ${VOLUME_BASE_PATH}node_modules
+      - ./tls:${VOLUME_BASE_PATH}tls
+    environment:
+      DB_SERVICE_NAME: mongo
+    env_file: .env
+    depends_on:
+      - mongo
+    networks:
+      - express-mongo
+      - react-express
+    expose:
+      - 3000
+
+  mongo:
+    container_name: mongo
+    image: mongo:7.0.22
+    restart: always
+    ports:
+      - ${DB_PORT}:27017
+    volumes:
+      - ./mongo_data:/data/db
+      - ./backend/db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
+      - ./tls:/etc/mongo-certs
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_PORT: ${DB_PORT}
+      DB_SERVICE_NAME: mongo
+      BE_PORT: ${BE_PORT}
+    command: >
+      mongod --bind_ip_all 
+      --tlsMode requireTLS 
+      --tlsCertificateKeyFile /etc/mongo-certs/mongo.pem 
+      --tlsCAFile /etc/mongo-certs/ca.pem 
+      --auth 
+    networks:
+      - express-mongo
+    expose:
+      - 27017
+
+networks:
+  react-express:
+  express-mongo:
+
+volumes:
+  mongo_data:
