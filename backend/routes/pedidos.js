@@ -4,140 +4,206 @@ const router = express.Router();
 const db = getDB();
 const collection = db.collection("Pedidos");
 
-//FUNCIONES AUXILIARES PARA MANEJO DE STOCK DE PRODUCTOS
-
+// FUNCIONES AUXILIARES PARA MANEJO DE STOCK DE PRODUCTOS
 async function verificarStock(db, productos) {
-  //tomar el id de los productos del pedido
-  const id_productos = productos.map((producto) => producto.id_producto);
-  //buscar los productos en la bd de productos mapeando con el id
-  const bd_productos = await db
-    .collection("Productos")
-    .find({ _id: { $in: id_productos } })
-    .toArray();
-
-  // por cada producto del pedido
-  const productosDelPedido = productos.map((producto) => {
-    //tomamos un producto
-    const producto_seleccionado = bd_productos.find((producto_buscado) =>
-      producto_buscado._id.equals(producto.id_producto)
-    );
-    //vemos la cantidad de productos que el pedido necesita
-    const cantidad_requerida = producto.cantidad;
-    //tomamos el stock del producto en caso de existir
-    const stock_actual = producto_seleccionado
-      ? producto_seleccionado.stock
-      : 0;
-    // devolvemos los datos del producto,
-    const informacion_stock = {
-      id_producto: producto.id_producto,
-      stock_actual,
-      stock_necesario: stock_actual >= cantidad_requerida,
-    };
-    return informacion_stock;
-  });
-  return productosDelPedido;
-}
-
-// funciión para actualizar el stock de productos
-async function actualizarStockProductos(db, productos, accion) {
-  for (const producto of productos) {
-    const cantidad = producto.cantidad;
-    const cambio = accion === "agregar" ? cantidad : -cantidad;
-
-    await db
+  try {
+    const id_productos = productos.map((p) => parseInt(p.id_producto));
+    const bd_productos = await db
       .collection("Productos")
-      .updateOne({ _id: producto.id_producto }, { $inc: { stock: cambio } });
+      .find({ _id: { $in: id_productos } })
+      .toArray();
+
+    return productos.map((producto) => {
+      const productoId = parseInt(producto.id_producto);
+      const productoBD = bd_productos.find((p) => p._id === productoId);
+      const stockDisponible = productoBD ? productoBD.stock : 0;
+
+      return {
+        id_producto: productoId,
+        nombre: productoBD?.nombre || "Producto desconocido",
+        stock_actual: stockDisponible,
+        stock_necesario: stockDisponible >= parseInt(producto.cantidad),
+        cantidad_solicitada: parseInt(producto.cantidad),
+      };
+    });
+  } catch (error) {
+    console.error("Error en verificación de stock:", error);
+    throw error;
   }
 }
 
-// CREATE
+async function actualizarStockProductos(db, productos, accion) {
+  try {
+    for (const producto of productos) {
+      const cantidad = parseInt(producto.cantidad);
+      const cambio = accion === "agregar" ? cantidad : -cantidad;
+
+      await db
+        .collection("Productos")
+        .updateOne(
+          { _id: parseInt(producto.id_producto) },
+          { $inc: { stock: cambio } }
+        );
+    }
+  } catch (error) {
+    console.error("Error en funcion actualizarStockProductos:", error);
+    throw error;
+  }
+}
+
+// CREATE -crear nuevo pedido
 router.post("/", async (req, res) => {
   try {
+    console.log("body recibido:", req.body);
+
+    // validar el id del cliente
+    if (!req.body.id_cliente) {
+      return res.status(400).json({
+        message: "el id del cliente es necesario",
+        received: req.body,
+      });
+    }
+
     const { productos, ...body } = req.body;
 
-    //verificar stock de los productos
+    // verificar  stock del producto x añadir
     const enStock = await verificarStock(db, productos);
     const sinStock = enStock.filter((p) => !p.stock_necesario);
 
     if (sinStock.length > 0) {
       return res.status(400).json({
-        error: "Stock insuficiente de lo(s) pedido(s): ",
+        error: "stock insuficiente",
         productos: sinStock.map((p) => ({
-          id_producto: p.id_producto,
-          stock_disponible: p.stock_disponible,
-          cantidad_solicitada: p.cantidad,
+          id: p.id_producto,
+          nombre: p.nombre,
+          stock: p.stock_actual,
+          requerido: p.cantidad_solicitada,
         })),
       });
     }
 
+    const id_max_actual = await collection
+      .find()
+      .sort({ _id: -1 })
+      .limit(1)
+      .toArray();
+    const nuevo_id = id_max_actual.length > 0 ? id_max_actual[0]._id + 1 : 1;
+
+    // Creación del documento
     const doc = {
       ...body,
-      _id: body._id,
-      id_cliente: body.id_cliente,
+      _id: nuevo_id,
+      id_cliente: parseInt(body.id_cliente),
       fecha_pedido: new Date(body.fecha_pedido || Date.now()),
       productos: productos.map((producto) => ({
-        id_producto: producto.id_producto,
+        id_producto: parseInt(producto.id_producto),
         cantidad: parseInt(producto.cantidad),
-        precio_unitario: parseInt(producto.precio_unitario),
-        total_producto: parseInt(producto.total_producto),
+        precio_unitario: parseFloat(producto.precio_unitario),
+        total_producto: parseFloat(producto.total_producto),
       })),
-      total_pedido: parseInt(body.total_pedido),
+      total_pedido: parseFloat(body.total_pedido),
       metodo_pago: body.metodo_pago,
       estado: "solicitado",
-      metodo_pago: body.metodo_pago,
     };
+
     const resultado = await collection.insertOne(doc);
-    res.status(201).send(resultado);
+
+    // Actualizar stock
+    await actualizarStockProductos(db, productos, "restar");
+
+    res.status(201).json({
+      success: true,
+      orderId: nuevo_id,
+      productos: enStock.map((p) => ({
+        id: p.id_producto,
+        nombre: p.nombre,
+        nuevo_stock: p.stock_actual - p.cantidad_solicitada,
+      })),
+    });
   } catch (err) {
-    console.error("ERROR: ", err);
-    res.status(500).send("Error al crear un pedido!");
+    res.status(500).json({
+      error: "error al crear pedido",
+      message: err.message,
+    });
   }
 });
 
-////////////////////////////////////
-
-// READ: todos los archivos
+// READ - Obtener todos los pedidos
 router.get("/", async (req, res) => {
   try {
     const resultados = await collection.find({}).toArray();
-    res.status(200).send(resultados);
+    res.status(200).json(resultados);
   } catch (err) {
-    console.error("ERROR: ", err);
-    res.status(400).send("Error al mostrar los pedidos!");
+    console.error("Error fetching orders:", err);
+    res.status(500).json({ error: "Error al obtener pedidos" });
   }
 });
 
-// READ: por ID de producto
-router.get("/:id", async (req, res) => {
+// READ - Obtener pedido por ID numérico
+router.get("/id/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    const consulta = { _id: id };
-    const resultado = await collection.findOne(consulta);
-    if (!resultado)
-      res.status(404).send("No se encontro un pedido con ese id!");
-    else res.status(200).send(resultado);
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "ID debe ser numérico" });
+    }
+
+    const resultado = await collection.findOne({ _id: id });
+    if (!resultado) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+    res.status(200).json(resultado);
   } catch (err) {
-    res.status(400).send("Id invalido!");
+    console.error("Error fetching order by ID:", err);
+    res.status(500).json({ error: "Error al buscar pedido" });
   }
 });
 
-// READ: por estado de producto
-router.get("/:estado", async (req, res) => {
+// READ - Obtener pedidos por estado
+router.get("/estado/:estado", async (req, res) => {
   try {
     const estado = req.params.estado;
-    const consulta = { estado: estado };
-    const resultado = await collection.findOne(consulta);
-    if (!resultado)
-      res.status(404).send("No se encontraron pedidos con ese estado!");
-    else res.status(200).send(resultado);
+    const estadosValidos = [
+      "solicitado",
+      "en preparación",
+      "enviado",
+      "entregado",
+      "cancelado",
+    ];
+
+    if (!estadosValidos.includes(estado)) {
+      return res.status(400).json({
+        error: "Estado inválido",
+        estados_validos: estadosValidos,
+      });
+    }
+
+    const resultados = await collection.find({ estado }).toArray();
+    res.status(200).json(resultados);
   } catch (err) {
-    res.status(400).send("Estado invalido!");
+    console.error("Error fetching orders by status:", err);
+    res.status(500).json({ error: "Error al buscar pedidos por estado" });
   }
 });
 
-//LECTURAS DE PEDIDOS POR FECHA:
+// READ - Obtener pedidos por cliente
+router.get("/cliente/:idCliente", async (req, res) => {
+  try {
+    const idCliente = parseInt(req.params.idCliente);
+    if (isNaN(idCliente)) {
+      return res.status(400).json({ error: "ID de cliente debe ser numérico" });
+    }
 
-// READ: por dia/mes/anio del pedido
+    const resultados = await collection
+      .find({ id_cliente: idCliente })
+      .toArray();
+    res.status(200).json(resultados);
+  } catch (err) {
+    console.error("Error fetching orders by client:", err);
+    res.status(500).json({ error: "Error al buscar pedidos por cliente" });
+  }
+});
+
+// FILTROS POR FECHA
 router.get("/filtro_fecha/por_diaMesAnio/:dia/:mes/:anio", async (req, res) => {
   const { dia, mes, anio } = req.params;
   try {
@@ -163,13 +229,13 @@ router.get("/filtro_fecha/por_diaMesAnio/:dia/:mes/:anio", async (req, res) => {
         },
       ])
       .toArray();
-    res.status(200).send(resultados);
+    res.status(200).json(resultados);
   } catch (err) {
-    res.status(500).send("Error al filtrar pedidos por dia!");
+    console.error("Error filtering by date:", err);
+    res.status(500).json({ error: "Error al filtrar pedidos por fecha" });
   }
 });
 
-//READ: FILTRAR POR MES Y AÑO
 router.get("/filtro_fecha/por_mesAnio/:mes/:anio", async (req, res) => {
   const { mes, anio } = req.params;
   try {
@@ -193,13 +259,13 @@ router.get("/filtro_fecha/por_mesAnio/:mes/:anio", async (req, res) => {
         },
       ])
       .toArray();
-    res.status(200).send(resultados);
+    res.status(200).json(resultados);
   } catch (err) {
-    res.status(500).send("Error al filtrar pedidos por mes y anio!");
+    console.error("Error filtering by month/year:", err);
+    res.status(500).json({ error: "Error al filtrar pedidos por mes/año" });
   }
 });
 
-//READ: FILTRAR POR MES (INDEPENDIENTE DEL AÑO)
 router.get("/filtro_fecha/por_mes/:mes", async (req, res) => {
   const { mes } = req.params;
   try {
@@ -221,13 +287,13 @@ router.get("/filtro_fecha/por_mes/:mes", async (req, res) => {
         },
       ])
       .toArray();
-    res.status(200).send(resultados);
+    res.status(200).json(resultados);
   } catch (err) {
-    res.status(500).send("Error al filtrar pedidos por mes!");
+    console.error("Error filtering by month:", err);
+    res.status(500).json({ error: "Error al filtrar pedidos por mes" });
   }
 });
 
-//READ: FILTRAR POR AÑO
 router.get("/filtro_fecha/por_anio/:anio", async (req, res) => {
   const { anio } = req.params;
   try {
@@ -249,61 +315,280 @@ router.get("/filtro_fecha/por_anio/:anio", async (req, res) => {
         },
       ])
       .toArray();
-    res.status(200).send(resultados);
+    res.status(200).json(resultados);
   } catch (err) {
-    res.status(500).send("Error al filtrar pedidos por año!");
+    console.error("Error filtering by year:", err);
+    res.status(500).json({ error: "Error al filtrar pedidos por año" });
   }
 });
 
-////////////////////////////////////
+// Detalles x id
+router.get("/detalle/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const pedido = await collection.findOne({ _id: id });
 
-// UPDATE/DELETE: cambio de estado
+    if (!pedido) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+
+    // Get product details
+    const idsProductos = pedido.productos.map((p) => p.id_producto);
+    const productos = await db
+      .collection("Productos")
+      .find({ _id: { $in: idsProductos } })
+      .toArray();
+
+    res.status(200).json({
+      ...pedido,
+      productos: pedido.productos.map((item) => {
+        const producto = productos.find((p) => p._id === item.id_producto);
+        return {
+          ...item,
+          nombre: producto?.nombre || "Desconocido",
+          precio_unitario: producto?.precio || 0,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("Error obteniendo detalle:", error);
+    res.status(500).json({ error: "Error al obtener detalle del pedido" });
+  }
+});
+
+// Tomaro den para editar
+router.get("/editar/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const pedido = await collection.findOne({ _id: id });
+
+    if (!pedido) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+
+    res.status(200).json(pedido);
+  } catch (error) {
+    console.error("Error obteniendo pedido para edición:", error);
+    res.status(500).json({ error: "Error al obtener pedido" });
+  }
+});
+
+// UPDATE - Cambiar estado de pedido
 router.patch("/cambiar_estado/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
 
-    const pedido = await collection.findOne({ _id: id });
-    if (!pedido)
-      return res.status(404).send("No se ha encontrado el pedido con ese ID");
-
-    // si se pide cancelar el pedido, se devolvera el stock solo si
-    // anteriormente el pedido estaba recien solicitado o en preparación
+    const pedido = await collection.findOne({ _id: Number(id) });
+    if (!pedido) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
 
     if (
       estado === "cancelado" &&
       (pedido.estado === "en preparación" || pedido.estado === "solicitado")
     ) {
-      for (const producto of pedido.productos) {
-        await db
-          .collection("Productos")
-          .updateOne(
-            { _id: producto.id_producto },
-            { $inc: { stock: producto.cantidad } }
-          );
-      }
+      await actualizarStockProductos(db, pedido.productos, "agregar");
     }
-    // actualizamos el estado del pedido
-    await collection.updateOne({ _id: id }, { $set: { estado } });
-    res.status(200).send("Estado actualizado correctamente");
+
+    await collection.updateOne({ _id: Number(id) }, { $set: { estado } });
+    res.status(200).json({ success: true, message: "Estado actualizado" });
   } catch (err) {
-    console.error("Error al cambiar estado:", err);
-    res.status(500).send("Error al actualizar el estado del pedido");
+    console.error("Error updating status:", err);
+    res.status(500).json({ error: "Error al actualizar estado" });
   }
 });
 
-// DELETE
+// UPDATE - Editar pedido completo
+router.put("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "ID debe ser numérico" });
+    }
+
+    // Validar datos básicos del pedido
+    if (
+      !req.body.id_cliente ||
+      !req.body.productos ||
+      !Array.isArray(req.body.productos)
+    ) {
+      return res.status(400).json({
+        error: "Datos incompletos",
+        detalles: "Se requieren id_cliente y array de productos",
+      });
+    }
+
+    // Obtener el pedido actual para comparar
+    const pedidoActual = await collection.findOne({ _id: id });
+    if (!pedidoActual) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+
+    // Verificar stock para los nuevos productos
+    const enStock = await verificarStock(db, req.body.productos);
+    const sinStock = enStock.filter((p) => !p.stock_necesario);
+
+    if (sinStock.length > 0) {
+      return res.status(400).json({
+        error: "Stock insuficiente",
+        productos: sinStock.map((p) => ({
+          id: p.id_producto,
+          nombre: p.nombre,
+          stock: p.stock_actual,
+          requerido: p.cantidad_solicitada,
+        })),
+      });
+    }
+
+    // Preparar datos para actualización
+    const datosActualizados = {
+      id_cliente: parseInt(req.body.id_cliente),
+      fecha_pedido: new Date(req.body.fecha_pedido || Date.now()),
+      productos: req.body.productos.map((p) => ({
+        id_producto: parseInt(p.id_producto),
+        cantidad: parseInt(p.cantidad),
+        precio_unitario: parseFloat(p.precio_unitario),
+        total_producto: parseFloat(p.total_producto),
+      })),
+      total_pedido: parseFloat(req.body.total_pedido),
+      metodo_pago: req.body.metodo_pago,
+      estado: req.body.estado || pedidoActual.estado,
+    };
+
+    // Manejo de cambios en el stock
+    const productosEliminados = pedidoActual.productos.filter(
+      (pActual) =>
+        !req.body.productos.some(
+          (pNuevo) => pNuevo.id_producto === pActual.id_producto
+        )
+    );
+
+    const productosNuevos = req.body.productos.filter(
+      (pNuevo) =>
+        !pedidoActual.productos.some(
+          (pActual) => pActual.id_producto === pNuevo.id_producto
+        )
+    );
+
+    const productosModificados = req.body.productos
+      .filter((pNuevo) =>
+        pedidoActual.productos.some(
+          (pActual) => pActual.id_producto === pNuevo.id_producto
+        )
+      )
+      .map((pNuevo) => {
+        const pActual = pedidoActual.productos.find(
+          (p) => p.id_producto === pNuevo.id_producto
+        );
+        return {
+          id_producto: pNuevo.id_producto,
+          diferencia: parseInt(pNuevo.cantidad) - parseInt(pActual.cantidad),
+        };
+      });
+
+    // Actualizar stock
+    await actualizarStockProductos(db, productosEliminados, "agregar"); // Restaurar stock de productos eliminados
+    await actualizarStockProductos(db, productosNuevos, "restar"); // Reducir stock de productos nuevos
+    await Promise.all(
+      productosModificados.map(async (p) => {
+        if (p.diferencia !== 0) {
+          await db
+            .collection("Productos")
+            .updateOne(
+              { _id: p.id_producto },
+              { $inc: { stock: -p.diferencia } }
+            );
+        }
+      })
+    );
+
+    // Actualizar el pedido en la base de datos
+    const resultado = await collection.updateOne(
+      { _id: id },
+      { $set: datosActualizados }
+    );
+
+    if (resultado.modifiedCount === 0) {
+      return res.status(400).json({
+        warning: "No se realizaron cambios",
+        pedido_actual: pedidoActual,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Pedido actualizado correctamente",
+      cambios_stock: {
+        productos_eliminados: productosEliminados.map((p) => p.id_producto),
+        productos_nuevos: productosNuevos.map((p) => p.id_producto),
+        productos_modificados: productosModificados
+          .filter((p) => p.diferencia !== 0)
+          .map((p) => ({
+            id_producto: p.id_producto,
+            diferencia: p.diferencia,
+          })),
+      },
+    });
+  } catch (err) {
+    console.error("Error al editar pedido:", err);
+    res.status(500).json({
+      error: "Error al editar pedido",
+      message: err.message,
+    });
+  }
+});
+
+// DELETE - Eliminar pedido
 router.delete("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    const consulta = { _id: id };
-    const resultado = await collection.deleteOne(consulta);
-    res.status(200).send(resultado);
+    const id = Number(req.params.id);
+    const pedido = await collection.findOne({ _id: id });
+    if (!pedido) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+
+    //restaurar stock de los producots del pedido pro eliminar
+    const resultadosStock = [];
+    for (const producto of pedido.productos || []) {
+      const productoId = producto.id_producto;
+      const cantidad = producto.cantidad;
+
+      const result = await db
+        .collection("Productos")
+        .updateOne({ _id: productoId }, { $inc: { stock: cantidad } });
+
+      resultadosStock.push({
+        producto_id: productoId,
+        cantidad,
+        actualizado: result.modifiedCount > 0,
+      });
+    }
+
+    // verificar modificaciones de productos exitosas
+    const fallos = resultadosStock.filter((r) => !r.actualizado);
+    if (fallos.length > 0) {
+      return res.status(500).json({
+        error: "Error al restaurar stock para algunos productos",
+        productos_con_error: fallos,
+      });
+    }
+    //eliminar pedido
+    const resultado = await collection.deleteOne({ _id: id });
+    if (resultado.deletedCount === 0) {
+      return res.status(404).json({ error: "No se pudo eliminar el pedido" });
+    }
+
+    res.status(200).json({
+      success: true,
+      deletedCount: resultado.deletedCount,
+      stockRestaurado: pedido.productos.map((p) => ({
+        id_producto: p.id_producto,
+        cantidad: p.cantidad,
+      })),
+    });
   } catch (err) {
-    console.error("ERROR EN DELETE:", err);
-    res
-      .status(500)
-      .send("Error al eliminar un pedido! Confirme que el ID es el correcto");
+    res.status(500).json({ error: "error al eliminar pedido" });
   }
 });
 

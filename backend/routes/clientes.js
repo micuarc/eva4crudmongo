@@ -8,22 +8,29 @@ const collection = db.collection("Clientes");
 router.post("/", async (req, res) => {
   try {
     const body = req.body;
+    const id_max_actual = await collection
+      .find()
+      .sort({ _id: -1 })
+      .limit(1)
+      .toArray();
+    const nuevo_id = id_max_actual.length > 0 ? id_max_actual[0]._id + 1 : 1;
     const doc = {
-      _id: parseInt(body._id),
+      _id: nuevo_id,
       nombres: body.nombres,
       apellidos: body.apellidos,
       direccion: {
         calle: body.direccion?.calle,
         numero: body.direccion?.numero,
-        departamento: body.direccion?.departamento ?? null,
         ciudad: body.direccion?.ciudad,
       },
       fecha_registro: new Date(body.fecha_registro),
+      estado: body.estado,
     };
     const resultado = await collection.insertOne(doc);
     res.status(201).send(resultado);
   } catch (err) {
-    console.error("ERROR: ", err);
+    console.log(error);
+    console.error("ERROR: ", JSON.stringify(err));
     res.status(500).send("Error al añadir un cliente");
   }
 });
@@ -52,7 +59,7 @@ router.get("/ciudad/:nombreCiudad", async (req, res) => {
 // READ: por ID de cliente
 router.get("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
+    const id = parseInt(req.params.id);
     const consulta = { _id: parseInt(id) };
     const resultado = await collection.findOne(consulta);
     if (!resultado)
@@ -69,7 +76,7 @@ router.get("/:id", async (req, res) => {
 // UPDATE
 router.patch("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
+    const id = parseInt(req.params.id);
     const consulta = { _id: id };
     const body = req.body;
     const modificaciones = {
@@ -79,7 +86,6 @@ router.patch("/:id", async (req, res) => {
         direccion: {
           calle: body.direccion?.calle,
           numero: body.direccion?.numero,
-          departamento: body.direccion?.departamento ?? null,
           ciudad: body.direccion?.ciudad,
         },
         fecha_registro: new Date(body.fecha_registro),
@@ -98,7 +104,7 @@ router.patch("/:id", async (req, res) => {
 // UPDATE/DELETE: cambio de estado
 router.patch("/cambiar_estado/:id", async (req, res) => {
   try {
-    const id = req.params.id;
+    const id = parseInt(req.params.id);
     const consulta = { _id: id };
     const body = req.body;
     const modificaciones = {
@@ -117,7 +123,7 @@ router.patch("/cambiar_estado/:id", async (req, res) => {
 // DELETE
 router.delete("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
+    const id = parseInt(req.params.id);
     const consulta = { _id: id };
     const resultado = await collection.deleteOne(consulta);
     res.status(200).send(resultado);
