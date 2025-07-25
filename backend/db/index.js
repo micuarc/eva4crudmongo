@@ -13,7 +13,6 @@ const {
 } = process.env;
 
 const uri = `mongodb://${DB_USER}:${DB_PASSWORD}@${DB_SERVICE_NAME}:27017/${DB_NAME}`;
-
 const secureContext = tls.createSecureContext({
   ca: fs.readFileSync(VOLUME_BASE_PATH + DB_CA_PEM),
   cert: fs.readFileSync(VOLUME_BASE_PATH + DB_CLIENT_CRT),
@@ -29,7 +28,7 @@ async function connectDB() {
     console.log("mongo connecting...");
     await client.connect();
     console.log("mongo connected");
-    db = client.db("comercioTech");
+    db = client.db(DB_NAME);
     return db;
   } catch (err) {
     console.error("Error con al conexión a Db:", err);

@@ -49,83 +49,81 @@ mongosh.createCollection("Clientes", {
   },
 });
 
-db.getCollection("Productos").drop();
-db.getCollection("Pedidos").drop();
-// // coleccion productos
-// mongosh.createCollection("Productos", {
-//   validator: {
-//     $jsonSchema: {
-//       bsonType: "object",
-//       required: [
-//         "_id",
-//         "nombre",
-//         "precio",
-//         "stock",
-//         "fecha_vencimiento",
-//         "estado",
-//       ],
-//       properties: {
-//         _id: { bsonType: "int" },
-//         nombre: { bsonType: "string" },
-//         precio: { bsonType: "int" },
-//         stock: { bsonType: "int" },
-//         fecha_vencimiento: { bsonType: "date" },
-//         estado: {
-//           enum: ["disponible", "agotado", "descontinuado"],
-//         },
-//       },
-//     },
-//   },
-// });
+// coleccion productos
+mongosh.createCollection("Productos", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: [
+        "_id",
+        "nombre",
+        "precio",
+        "stock",
+        "fecha_vencimiento",
+        "estado",
+      ],
+      properties: {
+        _id: { bsonType: "int" },
+        nombre: { bsonType: "string" },
+        precio: { bsonType: "int" },
+        stock: { bsonType: "int" },
+        fecha_vencimiento: { bsonType: "date" },
+        estado: {
+          enum: ["disponible", "agotado", "descontinuado"],
+        },
+      },
+    },
+  },
+});
 
-// // coleccion pedidos
-// mongosh.createCollection("Pedidos", {
-//   validator: {
-//     $jsonSchema: {
-//       bsonType: "object",
-//       required: [
-//         "_id",
-//         "id_cliente",
-//         "fecha_pedido",
-//         "productos",
-//         "total_pedido",
-//         "metodo_pago",
-//         "estado",
-//       ],
-//       properties: {
-//         _id: { bsonType: "int" },
-//         id_cliente: { bsonType: "int" },
-//         fecha_pedido: { bsonType: "date" },
-//         productos: {
-//           bsonType: "array",
-//           items: {
-//             bsonType: "object",
-//             required: [
-//               "id_producto",
-//               "cantidad",
-//               "precio_unitario",
-//               "total_producto",
-//             ],
-//             properties: {
-//               id_producto: { bsonType: "int" },
-//               cantidad: { bsonType: "int" },
-//               precio_unitario: { bsonType: "int" },
-//               total_producto: { bsonType: "int" },
-//             },
-//           },
-//         },
-//         total_pedido: { bsonType: "int" },
-//         metodo_pago: { enum: ["transferencia", "efectivo", "tarjeta"] },
-//         estado: {
-//           enum: [
-//             "solicitado",
-//             "en preparación",
-//             "enviado",
-//             "entregado",
-//             "cancelado",
-//           ],
-//         },
-//       },
-//     },
-//   },
-// });
+// coleccion pedidos
+mongosh.createCollection("Pedidos", {
+  validator: {
+    $jsonSchema: {
+      bsonType: "object",
+      required: [
+        "_id",
+        "id_cliente",
+        "fecha_pedido",
+        "productos",
+        "total_pedido",
+        "metodo_pago",
+        "estado",
+      ],
+      properties: {
+        _id: { bsonType: "int" },
+        id_cliente: { bsonType: "int" },
+        fecha_pedido: { bsonType: "date" },
+        productos: {
+          bsonType: "array",
+          items: {
+            bsonType: "object",
+            required: [
+              "id_producto",
+              "cantidad",
+              "precio_unitario",
+              "total_producto",
+            ],
+            properties: {
+              id_producto: { bsonType: "int" },
+              cantidad: { bsonType: "int" },
+              precio_unitario: { bsonType: "int" },
+              total_producto: { bsonType: "int" },
+            },
+          },
+        },
+        total_pedido: { bsonType: "int" },
+        metodo_pago: { enum: ["transferencia", "efectivo", "tarjeta"] },
+        estado: {
+          enum: [
+            "solicitado",
+            "en preparación",
+            "enviado",
+            "entregado",
+            "cancelado",
+          ],
+        },
+      },
+    },
+  },
+});

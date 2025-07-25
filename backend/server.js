@@ -8,23 +8,6 @@ const { getDB, connectDB } = require("./db");
 
 const app = express();
 
-// connectDB().then(() => {
-//   app.use("/api", require("./routes"));
-//   app.listen(3001, () => console.log("SV en puerto 3000"));
-// });
-
-// app.get("/test-db", async (req, res) => {
-//   try {
-//     if (!client.isConnected()) {
-//       await client.connect();
-//     }
-//     await client.db("comercioTech").command({ ping: 1 });
-//     res.status(200).send("Mongo conectado");
-//   } catch (e) {
-//     res.status(500).send("Error conexión Mongo: " + e.message);
-//   }
-// });
-
 async function startServer() {
   try {
     await connectDB();
